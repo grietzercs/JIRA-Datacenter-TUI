@@ -6,10 +6,7 @@ filters, run **JQL searches** across all projects with autocomplete and history,
 (description, comments, links, sub-tasks, Bitbucket pull requests) and transition / comment / assign it, and **create issues**
 from a form generated from Jira's create metadata.
 
-It follows one design rule:
-**nothing may spin forever**. Every network call has timeouts and a bounded number of
-retries, and shows elapsed time. Esc cancels it, and failures show a specific error with
-`r` to retry.
+This tool was created as a way to more quickly interact with Jira Datacenter endpoints with less overhead. The paradigm for design was a developer who wears many hats in a "startup" like environment where stories _can_ be created and edited, but greater sprint actions such as sprint goals or closing sprints *should* not be taken. Therefore, this TUI is designed around just that: anything the individual developer needs, not managing a team.
 
 ## Stack
 
