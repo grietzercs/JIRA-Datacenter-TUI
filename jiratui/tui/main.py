@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import shutil
+import subprocess
 from typing import TYPE_CHECKING, Optional, Union
 
 from rich.text import Text
@@ -29,6 +31,7 @@ class MainScreen(BaseScreen):
         Binding("1", "tab('sprints')", "Sprints", show=False),
         Binding("2", "tab('backlog')", "Backlog", show=False),
         Binding("3", "tab('issues')", "Issues", show=False),
+        Binding("y", "copy_link", "Copy link"),
         Binding("ctrl+n", "create", "Create issue"),
     ]
 
@@ -60,7 +63,7 @@ class MainScreen(BaseScreen):
         self.title = "Jira"
         self.sub_title = self.japp.session_label()
         lines = [f"Connected to {info.base_url}  ·  {info.describe()}  ·  user: {info.username or '?'}"
-                 "  ·  F1 help · Ctrl+N create · Esc: log out"]
+                 "  ·  F1 help · Ctrl+N create · y copy link · Esc: log out"]
         for w in info.warnings:
             lines.append(f"⚠ {w}")
         self.query_one("#info", Static).update(Text("\n".join(lines)))
@@ -107,6 +110,22 @@ class MainScreen(BaseScreen):
                 self.app.pop_screen()
 
         self.app.push_screen(ConfirmScreen("Log out and return to the login screen?", "Log out"), confirmed)
+
+    def action_copy_link(self) -> None:
+        """Copy the web UI link of the highlighted issue to the system clipboard."""
+        issue = self.pane().query_one(IssueTable).current_item()
+        if issue is None:
+            self.notify("No issue highlighted.", severity="warning")
+            return
+        url = self.japp.require_client().browse_url(issue.key)
+        # OSC 52 reaches the clipboard of terminals that support it, including over SSH; the
+        # native tool covers terminals that do not.
+        self.app.copy_to_clipboard(url)
+        tool = next(([t, *args] for t, args in (("pbcopy", []), ("wl-copy", []), ("xclip", ["-selection", "clipboard"]))
+                     if shutil.which(t)), None)
+        if tool:
+            subprocess.run(tool, input=url.encode(), check=False, timeout=5)
+        self.notify(f"Copied {url}", timeout=3)
 
     def action_create(self) -> None:
         from .create import CreateIssueScreen

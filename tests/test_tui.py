@@ -286,6 +286,23 @@ async def test_custom_filters_create_apply_edit_delete_and_favourites(fake):
         await wait_for(pilot, lambda: pane.filters.custom is None)
 
 
+async def test_copy_link_of_highlighted_issue(fake, monkeypatch):
+    calls = []
+    monkeypatch.setattr("jiratui.tui.main.shutil.which", lambda t: "/usr/bin/" + t if t == "pbcopy" else None)
+    monkeypatch.setattr("jiratui.tui.main.subprocess.run", lambda cmd, **kw: calls.append((cmd, kw["input"])))
+    app = make_app(fake)
+    async with app.run_test(size=SIZE) as pilot:
+        await login(app, pilot)
+        pane = await sprints_ready(app, pilot)
+        pane.table.focus_table()
+        key = pane.table.current_item().key
+        await pilot.press("y")
+        await pilot.pause()
+        url = f"{app.require_client().base_url}/browse/{key}"
+        assert calls == [(["pbcopy"], url.encode())]
+        assert app.clipboard == url
+
+
 # -------------------------------------------------------------------- backlog
 async def test_backlog_board_choice_is_remembered(fake):
     app = make_app(fake)
