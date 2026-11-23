@@ -121,7 +121,7 @@ deletes that file. Keychain items can be removed in Keychain Access by searching
   ("Story Points" custom field).
 - **Backlog**: scrum boards use `/rest/agile/1.0/board/{id}/backlog`. Kanban boards and projects
   without a board (or "(no board)" in the board picker) use the JQL equivalent:
-  `project = X AND (sprint is EMPTY OR sprint in closedSprints()) AND statusCategory != Done`.
+  `project = X AND statusCategory != Done`.
 - **Issues / JQL**: search across all projects and issue types. The query is sent with `POST /search`,
   so long JQL never hits URL limits.
 - **Issue detail**: all the usual fields plus sprint, story points, epic link, parent, Jira wiki

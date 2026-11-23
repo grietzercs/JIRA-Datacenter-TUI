@@ -9,8 +9,7 @@ and an issue table. Only the base query differs:
   rejects the ``sprint`` JQL field);
 * Backlog: the Agile ``/board/{id}/backlog`` endpoint with the filters passed
   as its ``jql`` parameter for scrum boards, or the JQL equivalent
-  (``project = X AND (sprint is EMPTY OR sprint in closedSprints()) AND
-  statusCategory != Done``) for kanban boards and projects without a board.
+  (``project = X AND statusCategory != Done``) for kanban boards and projects without a board.
 """
 
 from __future__ import annotations
@@ -246,6 +245,7 @@ class IssueListPane(Vertical):
 
         async def load():
             labels = await self.japp.cached(f"labels:{key}", lambda: client.project_labels(key))
+            labels = sorted(set(labels + await self.extra_labels()), key=lambda lb: (lb.lower(), lb))
             if not labels:  # nothing labelled yet in this project: offer Jira's global suggestions
                 labels = await self.japp.cached("labels:*", lambda: client.label_suggestions(""))
             return [(lb, lb) for lb in labels]
@@ -262,6 +262,10 @@ class IssueListPane(Vertical):
 
     async def extra_people(self) -> List[User]:
         """People to offer beyond the project's assignable users."""
+        return [await self.japp.cached("me", self.client.myself)]
+
+    async def extra_labels(self) -> List[str]:
+        """Labels to offer beyond those used in the project."""
         return []
 
     def action_pick_people(self) -> None:
@@ -469,7 +473,8 @@ class SprintsPane(IssueListPane):
         sprint = self.sprint
         if sprint is None:
             return []
-        return await self.japp.cached(f"people:sprint:{sprint.id}", lambda: self.client.sprint_assignees(sprint.id))
+        return await self.japp.cached(f"people:sprint:{sprint.id}", lambda: self.client.sprint_assignees(sprint.id)) \
+            + await super().extra_people()
 
     @staticmethod
     def _sprint_clause_failed(exc: JqlError) -> bool:
@@ -500,9 +505,24 @@ class BacklogPane(IssueListPane):
         if self.project is None:
             return ""
         if self.uses_agile():
-            frag = jql.compose("", self.filters.fragments(), self.order_by)
+            frag = self.filters.fragment()
             return f"[board #{self.board.id} backlog via Agile API] {frag}".strip()
         return jql.compose(jql.backlog_base(self.project.key), self.filters.fragments(), self.order_by)
+
+    async def extra_people(self) -> List[User]:
+        mine = await super().extra_people()
+        if not self.uses_agile():
+            return mine
+        board_id = self.board.id
+        users, _ = await self.japp.cached(f"facets:{board_id}", lambda: self.client.backlog_facets(board_id))
+        return users + mine
+
+    async def extra_labels(self) -> List[str]:
+        if not self.uses_agile():
+            return []
+        board_id = self.board.id
+        _, labels = await self.japp.cached(f"facets:{board_id}", lambda: self.client.backlog_facets(board_id))
+        return labels
 
     def board_changed(self) -> None:
         self.note = "" if self.uses_agile() or self.project is None else (
@@ -513,9 +533,19 @@ class BacklogPane(IssueListPane):
     async def _fetch_issues(self, start: int, limit: int, flt: str) -> Page[Issue]:
         if self.project is None:
             return Page(values=[])
+        if self.uses_agile() and not self.filters.is_empty:
+            # The Agile backlog's jql parameter returns nothing for filtered views on some servers;
+            # search the board's saved filter instead.
+            fid = await self.japp.cached(f"boardfilter:{self.board.id}",
+                                         lambda: self.client.board_filter_id(self.board.id))
+            if fid:
+                base = f"filter = {int(fid)} AND {jql.project_clause(self.project.key)} AND statusCategory != Done"
+                return await self.client.search(
+                    jql.compose(base, self.filters.fragments(), self.order_by), start, limit,
+                    fields=self._fields(), catalog=self.catalog, story_points_id=self.sp_field)
         if self.uses_agile():
             return await self.client.board_backlog(
-                self.board.id, jql.compose("", self.filters.fragments(), self.order_by), start, limit,
+                self.board.id, self.filters.fragment(), start, limit,
                 fields=self._fields(), catalog=self.catalog, story_points_id=self.sp_field)
         return await self.client.search(self.effective_jql(), start, limit, fields=self._fields(),
                                         catalog=self.catalog, story_points_id=self.sp_field)

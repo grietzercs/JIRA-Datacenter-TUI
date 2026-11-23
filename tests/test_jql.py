@@ -96,8 +96,7 @@ def test_filter_state_combination():
 
 
 def test_backlog_base():
-    assert jql.backlog_base("PLAT") == ('project = "PLAT" AND (sprint is EMPTY OR sprint in closedSprints()) '
-                                        "AND statusCategory != Done")
+    assert jql.backlog_base("PLAT") == 'project = "PLAT" AND statusCategory != Done'
 
 
 # -------------------------------------------- round trip through the fake JQL

@@ -16,7 +16,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
-from typing import Any, AsyncIterator, Callable, Dict, List, Optional, Sequence, TypeVar
+from typing import Any, AsyncIterator, Callable, Dict, List, Optional, Sequence, Tuple, TypeVar
 from urllib.parse import quote, urlsplit, urlunsplit
 
 import httpx
@@ -413,6 +413,15 @@ class JiraClient:
         fid = str(((est.get("field") or {}).get("fieldId")) or "")
         return fid if fid.startswith("customfield_") else ""
 
+    async def board_filter_id(self, board_id: int) -> str:
+        """Id of the saved filter behind a board, or ''."""
+        try:
+            data = await self.get_json(f"{AGILE}/board/{int(board_id)}/configuration")
+        except (NotFoundError, PermissionDeniedError, BadRequestError) as exc:
+            log.debug("board configuration unavailable: %s", exc.message)
+            return ""
+        return str(((data or {}).get("filter") or {}).get("id") or "")
+
     async def list_sprints(self, board_id: int, states: Sequence[str] = ("active", "future"),
                            start: int = 0, limit: int = 50) -> Page[Sprint]:
         return await self.get_page(
@@ -447,6 +456,24 @@ class JiraClient:
             )
         except BadRequestError as exc:
             raise self._jql_error(exc) from exc
+
+    async def backlog_facets(self, board_id: int, max_issues: int = 1000) -> Tuple[List[User], List[str]]:
+        """Distinct assignees and labels of a board's backlog (bounded Agile API read)."""
+        users: Dict[str, User] = {}
+        labels: Dict[str, str] = {}
+        start = 0
+        while start < max_issues:
+            page = await self.board_backlog(board_id, "", start, min(100, max_issues - start),
+                                            fields=["assignee", "labels"])
+            for i in page.values:
+                if i.assignee:
+                    users.setdefault(i.assignee.name, i.assignee)
+                for lb in i.labels:
+                    labels.setdefault(lb, lb)
+            if page.next_start is None or page.next_start <= start:
+                break
+            start = page.next_start
+        return list(users.values()), sorted(labels.values(), key=str.lower)
 
     async def sprint_issues(self, sprint_id: int, jql: str = "", start: int = 0, limit: int = 50,
                             fields: Sequence[str] = (), catalog: Optional[FieldCatalog] = None,
@@ -497,8 +524,10 @@ class JiraClient:
             raise self._jql_error(exc) from exc
         if not isinstance(data, dict) or "issues" not in data:
             raise UnexpectedResponseError("Search response had no 'issues'")
-        return Page.from_json(data, lambda d: Issue.from_json(d, catalog, story_points_id), key="issues",
+        page = Page.from_json(data, lambda d: Issue.from_json(d, catalog, story_points_id), key="issues",
                               start_at=start, max_results=limit)
+        log.debug("search jql=%r -> %d of %s issues", jql, len(page.values), page.total)
+        return page
 
     async def validate_jql(self, jql: str) -> int:
         """Run the query with ``maxResults=0``; returns the total or raises :class:`JqlError`."""
@@ -516,7 +545,7 @@ class JiraClient:
             page = await self.search(jql, start, min(100, max_issues - seen), fields=["labels"])
             for issue in page.values:
                 for lb in issue.labels:
-                    labels.setdefault(lb.lower(), lb)
+                    labels.setdefault(lb, lb)
             seen += len(page.values)
             if page.next_start is None or page.next_start <= start:
                 break

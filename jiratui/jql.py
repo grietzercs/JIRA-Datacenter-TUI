@@ -197,5 +197,4 @@ def project_clause(project_key: str) -> str:
 
 def backlog_base(project_key: str) -> str:
     """JQL equivalent of a backlog for kanban / board-less projects."""
-    return (f"{project_clause(project_key)} AND (sprint is EMPTY OR sprint in closedSprints()) "
-            "AND statusCategory != Done")
+    return f"{project_clause(project_key)} AND statusCategory != Done"

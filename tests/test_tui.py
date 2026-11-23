@@ -300,13 +300,13 @@ async def test_backlog_view_agile_and_jql_equivalent(fake):
         assert pane.table.pager.total == 54
         assert all(not i.sprints or all(s.state == "closed" for s in i.sprints) for i in pane.table.items)
 
-        # Same label filter component, sent as the Agile endpoint's jql parameter.
+        # Same label filter component, sent as the Agile endpoint's jql parameter (board without a saved filter id).
         pane.table.focus_table()
         await pilot.press("l")
         await pick_multi(app, pilot, "tech")
         await wait_for(pilot, lambda: pane.filters.labels == ["tech-debt"] and not pane.table.is_loading)
         req = [r for r in fake.requests if r.url.path.endswith("/backlog")][-1]
-        assert req.url.params["jql"] == 'labels in ("tech-debt") ORDER BY Rank ASC'
+        assert req.url.params["jql"] == 'labels in ("tech-debt")'
         assert all("tech-debt" in i.labels for i in pane.table.items)
 
         # Kanban-only project: JQL equivalent of a backlog.
@@ -317,7 +317,7 @@ async def test_backlog_view_agile_and_jql_equivalent(fake):
         assert pane.board.type == "kanban"
         assert pane.filters.is_empty  # filters are per project
         await wait_for(pilot, lambda: {i.key for i in pane.table.items} == {"OPS-1", "OPS-2"})
-        assert fake.searches[-1].startswith('project = "OPS" AND (sprint is EMPTY OR sprint in closedSprints())')
+        assert fake.searches[-1].startswith('project = "OPS" AND statusCategory != Done')
         assert "JQL equivalent" in text_of(pane.query_one(FilterBar))
 
 
