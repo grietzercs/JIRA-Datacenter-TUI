@@ -83,9 +83,9 @@ class IssueListPane(Vertical):
     def context_bar(self) -> Static:
         return Static("", classes="context")
 
-    def issue_table(self, empty_text: str) -> IssueTable:
+    def issue_table(self, empty_text: str, group=None) -> IssueTable:
         return IssueTable(ISSUE_COLUMNS, self._fetch_issues, issue_row, limit=50, autoload=False,
-                          empty_text=empty_text, noun="issue", id=f"{self.view_name}-issues")
+                          empty_text=empty_text, noun="issue", group=group, id=f"{self.view_name}-issues")
 
     @property
     def table(self) -> IssueTable:
@@ -486,10 +486,15 @@ class SprintsPane(IssueListPane):
 class BacklogPane(IssueListPane):
     view_name = "backlog"
 
+    def __init__(self, id: Optional[str] = None) -> None:
+        super().__init__(id=id)
+        self._grouped: List[Issue] = []
+        self._group_counts: Dict[int, int] = {}
+
     def compose(self) -> ComposeResult:
         yield self.context_bar()
         yield FilterBar()
-        yield self.issue_table("The backlog is empty (or nothing matches the filters).")
+        yield self.issue_table("The backlog is empty (or nothing matches the filters).", group=self._group_label)
 
     def on_mount(self) -> None:
         super().on_mount()
@@ -530,12 +535,51 @@ class BacklogPane(IssueListPane):
             "endpoint unless the backlog is enabled).")
         self.refresh_issues()
 
+    @staticmethod
+    def _sprint_of(issue: Issue) -> Optional[Sprint]:
+        """The active or future sprint an issue is planned in (closed history does not count)."""
+        return next((s for s in sorted(issue.sprints, key=lambda s: s.state != "active")
+                     if s.state in ("active", "future")), None)
+
+    def _group_label(self, issue: Issue) -> str:
+        sprint = self._sprint_of(issue)
+        count = self._group_counts.get(sprint.id if sprint else 0, 0)
+        noun = f"{count} issue{'s' if count != 1 else ''}"
+        if sprint is None:
+            return f"Backlog  ({noun})"
+        dates = f"  {format_date(sprint.start_date)} - {format_date(sprint.end_date)}" if sprint.start_date else ""
+        return f"{sprint.name} [{sprint.state}]{dates}  ({noun})"
+
     async def _fetch_issues(self, start: int, limit: int, flt: str) -> Page[Issue]:
+        """Whole (bounded) backlog, ordered active sprint, future sprints, then unscheduled,
+        so the table can show a header per sprint; rank order is kept within each group."""
         if self.project is None:
             return Page(values=[])
-        if self.uses_agile() and not self.filters.is_empty:
-            # The Agile backlog's jql parameter returns nothing for filtered views on some servers;
-            # search the board's saved filter instead.
+        if start == 0:
+            items: List[Issue] = []
+            while len(items) < 1000:
+                page = await self._fetch_page(len(items), 100)
+                items += page.values
+                if page.next_start is None or not page.values:
+                    break
+            sprints = {i.key: self._sprint_of(i) for i in items}
+
+            def order(issue: Issue):
+                s = sprints[issue.key]
+                return (True, False, "", 0) if s is None else (False, s.state != "active", s.start_date, s.id)
+
+            self._grouped = sorted(items, key=order)
+            self._group_counts = {}
+            for s in sprints.values():
+                self._group_counts[s.id if s else 0] = self._group_counts.get(s.id if s else 0, 0) + 1
+        items = self._grouped
+        return Page(values=items[start:start + limit], start_at=start, max_results=limit, total=len(items),
+                    is_last=start + limit >= len(items))
+
+    async def _fetch_page(self, start: int, limit: int) -> Page[Issue]:
+        if self.uses_agile():
+            # The Agile backlog endpoint omits issues planned in sprints and its jql parameter returns
+            # nothing for filtered views on some servers; search the board's saved filter instead.
             fid = await self.japp.cached(f"boardfilter:{self.board.id}",
                                          lambda: self.client.board_filter_id(self.board.id))
             if fid:
@@ -546,6 +590,6 @@ class BacklogPane(IssueListPane):
         if self.uses_agile():
             return await self.client.board_backlog(
                 self.board.id, self.filters.fragment(), start, limit,
-                fields=self._fields(), catalog=self.catalog, story_points_id=self.sp_field)
+                fields=[*self._fields(), "sprint"], catalog=self.catalog, story_points_id=self.sp_field)
         return await self.client.search(self.effective_jql(), start, limit, fields=self._fields(),
                                         catalog=self.catalog, story_points_id=self.sp_field)

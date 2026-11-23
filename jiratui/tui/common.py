@@ -26,6 +26,7 @@ from textual.message import Message
 from textual.screen import ModalScreen, Screen
 from textual.timer import Timer
 from textual.widgets import Button, DataTable, Input, Label, OptionList, SelectionList, Static, TextArea
+from textual.widgets.data_table import CellDoesNotExist
 from textual.widgets.option_list import Option
 from textual.worker import Worker
 
@@ -133,6 +134,7 @@ class PagedTable(Vertical):
         autoload: bool = True,
         empty_text: str = "Nothing here.",
         noun: str = "item",
+        group: Optional[Callable[[Any], str]] = None,
         id: Optional[str] = None,
     ) -> None:
         super().__init__(id=id)
@@ -144,6 +146,8 @@ class PagedTable(Vertical):
         self.autoload = autoload
         self.empty_text = empty_text
         self.noun = noun
+        self.group = group
+        self._last_group: Optional[str] = None
         self.filter_text = ""
         self.pager: Pager[Any] = self._new_pager()
         self.is_loading = False
@@ -207,6 +211,7 @@ class PagedTable(Vertical):
         self._gen += 1
         self.pager = self._new_pager()
         self.failed = False
+        self._last_group = None
         self.table.clear()
         self.loaded_once = True
         self.load_more()
@@ -249,9 +254,15 @@ class PagedTable(Vertical):
         base = len(pager.items) - len(new)
         table = self.table
         for i, item in enumerate(new):
+            if self.group is not None and (label := self.group(item)) != self._last_group:
+                self._last_group = label
+                table.add_row(cell(label, "bold reverse"), *[cell("")] * (len(self.columns) - 1),
+                              key=f"group-{base + i}")
             table.add_row(*[c if isinstance(c, Text) else cell(c) for c in self._row(item)], key=str(base + i))
         self._update_done_status()
         if base == 0 and new:
+            if self.group is not None:
+                table.move_cursor(row=1)  # skip the first group header
             self.post_message(self.Highlighted(self, new[0]))
 
     def _tick(self) -> None:
@@ -311,10 +322,11 @@ class PagedTable(Vertical):
         t = self.table
         if t.row_count == 0:
             return None
-        idx = t.cursor_row
-        if 0 <= idx < len(self.pager.items):
-            return self.pager.items[idx]
-        return None
+        try:
+            key = t.coordinate_to_cell_key(t.cursor_coordinate).row_key.value
+            return self.pager.items[int(str(key))]
+        except (ValueError, IndexError, TypeError, CellDoesNotExist):
+            return None  # group header rows have no item
 
     @on(DataTable.RowHighlighted)
     def _highlighted(self, ev: DataTable.RowHighlighted) -> None:

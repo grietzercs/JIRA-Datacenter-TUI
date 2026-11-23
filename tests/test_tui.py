@@ -298,6 +298,9 @@ async def test_backlog_view_agile_and_jql_equivalent(fake):
                        not pane.table.is_loading, msg="backlog loaded")
         assert any(r.url.path == "/rest/agile/1.0/board/1/backlog" for r in fake.requests)
         assert pane.table.pager.total == 54
+        keys = [r.value for r in pane.table.table.rows]
+        assert any(k.startswith('group-') for k in keys)
+        assert pane.table.current_item() is not None  # cursor skips the first group header
         assert all(not i.sprints or all(s.state == "closed" for s in i.sprints) for i in pane.table.items)
 
         # Same label filter component, sent as the Agile endpoint's jql parameter (board without a saved filter id).
