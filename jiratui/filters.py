@@ -6,6 +6,8 @@
   (``source="jira"``) so the UI treats both alike.
 * :class:`FilterState` is what a view currently applies: labels (OR), people
   (OR, incl. Unassigned) and at most one custom filter; categories are ANDed.
+* :class:`ViewStateStore` remembers each view's board, labels and people per
+  project in ``view_state.json`` so the next launch restores them.
 * :class:`FilterStore` persists custom filters in ``filters.json`` and
   :class:`QueryStore` keeps JQL history and saved queries in ``queries.json``,
   both under the config dir (``$XDG_CONFIG_HOME/jira-tui``, mode 0600).
@@ -213,3 +215,23 @@ class QueryStore:
     def delete_query(self, name: str) -> None:
         self.saved = [s for s in self.saved if s.name != name]
         self.save()
+
+
+class ViewStateStore:
+    """Last board / labels / people per view and project (``view_state.json``)."""
+
+    FILE = "view_state.json"
+
+    def __init__(self, path: Optional[str] = None) -> None:
+        self.path = path or f"{config_dir()}/{self.FILE}"
+        data = read_json(self.path)
+        self.data: Dict[str, Any] = data if isinstance(data, dict) else {}
+
+    def get(self, view: str, project_key: str) -> Dict[str, Any]:
+        state = (self.data.get(view) or {}).get(project_key.upper())
+        return state if isinstance(state, dict) else {}
+
+    def update(self, view: str, project_key: str, **values: Any) -> None:
+        views = self.data.setdefault(view, {})
+        views.setdefault(project_key.upper(), {}).update(values)
+        write_json_private(self.path, self.data)

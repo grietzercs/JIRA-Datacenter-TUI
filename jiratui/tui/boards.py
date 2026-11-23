@@ -188,7 +188,19 @@ class IssueListPane(Vertical):
         except Exception as exc:  # noqa: BLE001
             self.table.show_message(f"Could not load boards: {error_text(exc)}\nPress p to retry.", True)
             return
-        await self._set_board(self.default_board(self.boards))
+        saved = self.japp.view_state.get(self.view_name, project.key)
+        self.filters = FilterState(labels=list(saved.get("labels") or []), people=list(saved.get("people") or []))
+        remembered = str(saved.get("board", ""))
+        board = next((b for b in self.boards if str(b.id) == remembered), None)
+        if remembered == NO_BOARD and self.extra_board_choices():
+            board = None
+        elif board is None:
+            board = self.default_board(self.boards)
+        await self._set_board(board)
+
+    def remember(self, **values) -> None:
+        if self.project is not None:
+            self.japp.view_state.update(self.view_name, self.project.key, **values)
 
     def default_board(self, boards: List[Board]) -> Optional[Board]:
         scrum = [b for b in boards if b.has_sprints]
@@ -215,6 +227,7 @@ class IssueListPane(Vertical):
 
     async def _set_board(self, board: Optional[Board]) -> None:
         self.board = board
+        self.remember(board=str(board.id) if board else NO_BOARD)
         self.sp_field = self.catalog.story_points_id if self.catalog else ""
         if board is not None:
             try:
@@ -255,6 +268,7 @@ class IssueListPane(Vertical):
         def chosen(values: Optional[List[str]]) -> None:
             if values is not None:
                 self.filters.labels = values
+                self.remember(labels=values)
                 self.refresh_issues()
 
         self.app.push_screen(PickerScreen(
@@ -286,6 +300,7 @@ class IssueListPane(Vertical):
         def chosen(values: Optional[List[str]]) -> None:
             if values is not None:
                 self.filters.people = values
+                self.remember(people=values)
                 self.refresh_issues()
 
         pinned = [(jql.UNASSIGNED, "Unassigned (assignee is EMPTY)")] + \
@@ -330,6 +345,7 @@ class IssueListPane(Vertical):
 
     def action_clear_filters(self) -> None:
         self.filters.clear()
+        self.remember(labels=[], people=[])
         self.refresh_issues()
 
     # ------------------------------------------------------------ issues

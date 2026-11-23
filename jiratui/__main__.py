@@ -83,11 +83,11 @@ def main(argv: Optional[List[str]] = None) -> int:
         return 2
 
     transport_factory = None
-    filter_store = query_store = None
+    filter_store = query_store = view_state = None
     if args.demo:
         import tempfile
 
-        from .filters import FilterStore, QueryStore
+        from .filters import FilterStore, QueryStore, ViewStateStore
         from .testing.fake_server import DEMO_TOKEN, DEMO_URL, DEMO_USER, FakeJira
 
         fake = FakeJira()
@@ -99,6 +99,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         demo_dir = tempfile.mkdtemp(prefix="jiratui-demo-")
         filter_store = FilterStore(os.path.join(demo_dir, "filters.json"))
         query_store = QueryStore(os.path.join(demo_dir, "queries.json"))
+        view_state = ViewStateStore(os.path.join(demo_dir, "view_state.json"))
 
     from .tui.app import JiraApp
 
@@ -112,6 +113,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         demo=args.demo,
         filter_store=filter_store,
         query_store=query_store,
+        view_state=view_state,
     )
     app.run()
     if log_path:

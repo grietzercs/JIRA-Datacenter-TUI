@@ -287,6 +287,23 @@ async def test_custom_filters_create_apply_edit_delete_and_favourites(fake):
 
 
 # -------------------------------------------------------------------- backlog
+async def test_backlog_board_choice_is_remembered(fake):
+    app = make_app(fake)
+    async with app.run_test(size=SIZE) as pilot:
+        main = await login(app, pilot)
+        await sprints_ready(app, pilot)
+        await pilot.press("f3")
+        pane = main.query_one(BacklogPane)
+        await wait_for(pilot, lambda: pane.board is not None and not pane.table.is_loading, msg="backlog loaded")
+        assert app.view_state.get("backlog", "PLAT")["board"] == str(pane.board.id)
+        pane.table.focus_table()
+        await pilot.press("b")
+        await pick_single(app, pilot, "no board")
+        await wait_for(pilot, lambda: pane.board is None, msg="no board")
+        assert app.view_state.get("backlog", "PLAT")["board"] == "__no_board__"
+        await pane._load_project(pane.project)  # what a relaunch does
+        assert pane.board is None
+
 async def test_backlog_view_agile_and_jql_equivalent(fake):
     app = make_app(fake)
     async with app.run_test(size=SIZE) as pilot:

@@ -14,7 +14,7 @@ from textual.binding import Binding
 from ..api import AuthStrategy, JiraClient, TLSOptions
 from ..api.models import FieldCatalog, ServerInfo
 from ..config import EnvCredentials, Settings
-from ..filters import FilterStore, QueryStore
+from ..filters import FilterStore, QueryStore, ViewStateStore
 from .common import HelpScreen
 from .login import LoginScreen
 
@@ -42,6 +42,7 @@ class JiraApp(App):
         demo: bool = False,
         filter_store: Optional[FilterStore] = None,
         query_store: Optional[QueryStore] = None,
+        view_state: Optional[ViewStateStore] = None,
     ) -> None:
         super().__init__()
         self.settings = settings or Settings()
@@ -55,6 +56,7 @@ class JiraApp(App):
         self.server: Optional[ServerInfo] = None
         self.filter_store = filter_store or FilterStore()
         self.query_store = query_store or QueryStore()
+        self.view_state = view_state or ViewStateStore()
         self._cache: Dict[str, Any] = {}
         # Set after a create/transition/assign so list views reload when shown again.
         self.issues_changed = False

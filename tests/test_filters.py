@@ -3,7 +3,7 @@ import os
 import stat
 
 from jiratui import config
-from jiratui.filters import GLOBAL, PROJECT, CustomFilter, FilterStore, QueryStore
+from jiratui.filters import GLOBAL, PROJECT, CustomFilter, FilterStore, QueryStore, ViewStateStore
 from jiratui.api.models import JiraFilter
 
 
@@ -87,4 +87,15 @@ def test_query_store_history_and_saved(tmp_path):
                                                       ("My bugs", "issuetype = Bug AND assignee = currentUser()")]
     again.delete_query("All")
     assert [s.name for s in QueryStore(path).saved] == ["My bugs"]
+    assert stat.S_IMODE(os.stat(path).st_mode) == 0o600
+
+
+def test_view_state_store_roundtrip(tmp_path):
+    path = str(tmp_path / "view_state.json")
+    store = ViewStateStore(path)
+    assert store.get("backlog", "plat") == {}
+    store.update("backlog", "plat", board="7", labels=["a"])
+    store.update("backlog", "PLAT", people=["bob"])
+    assert ViewStateStore(path).get("backlog", "PLAT") == {"board": "7", "labels": ["a"], "people": ["bob"]}
+    assert ViewStateStore(path).get("sprints", "PLAT") == {}
     assert stat.S_IMODE(os.stat(path).st_mode) == 0o600

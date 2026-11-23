@@ -206,7 +206,7 @@ Everything runs offline against `jiratui/testing/fake_server.py`, an in-memory f
 - **JQL builder**: quoting/escaping, field refs, OR-wrapping, quote-aware ORDER BY handling, filter
   combination, and round-trips through the fake JQL engine, including labels and usernames with
   special characters.
-- **Persistence**: `filters.json` and `queries.json` (XDG, 0600, project vs global scope), config, keychain.
+- **Persistence**: `filters.json`, `queries.json` and `view_state.json` (last board, labels and people per view and project) (XDG, 0600, project vs global scope), config, keychain.
 - **Redaction**, a real debug-log check, and the wiki renderer.
 - **Textual Pilot**: login errors and auth detection; sprints with label/person/custom filters;
   custom filter create/edit/delete and Jira favourites; backlog (Agile and JQL equivalent); JQL search
