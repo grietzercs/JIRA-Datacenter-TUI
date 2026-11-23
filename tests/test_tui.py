@@ -312,6 +312,15 @@ async def test_backlog_view_agile_and_jql_equivalent(fake):
         assert req.url.params["jql"] == 'labels in ("tech-debt")'
         assert all("tech-debt" in i.labels for i in pane.table.items)
 
+        # Quick search narrows by summary, combined with the label filter.
+        pane.table._apply_filter("zzqq")
+        await wait_for(pilot, lambda: not pane.table.is_loading)
+        req = [r for r in fake.requests if r.url.path.endswith("/backlog")][-1]
+        assert req.url.params["jql"] == 'labels in ("tech-debt") AND summary ~ "zzqq*"'
+        pane.table.query_one(".filter").value = ""
+        pane.table._apply_filter("")
+        await wait_for(pilot, lambda: not pane.table.is_loading)
+
         # Kanban-only project: JQL equivalent of a backlog.
         await pilot.press("p")
         await pick_single(app, pilot, "OPS")

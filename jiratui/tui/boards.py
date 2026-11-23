@@ -50,6 +50,7 @@ class IssueListPane(Vertical):
         Binding("f", "custom_filters", "Custom filter"),
         Binding("F", "new_filter", "New filter", show=False),
         Binding("X", "clear_filters", "Clear filters", show=False),
+        Binding("slash", "quick_search", "Search"),
     ]
 
     DEFAULT_CSS = """
@@ -85,7 +86,8 @@ class IssueListPane(Vertical):
 
     def issue_table(self, empty_text: str, group=None) -> IssueTable:
         return IssueTable(ISSUE_COLUMNS, self._fetch_issues, issue_row, limit=50, autoload=False,
-                          empty_text=empty_text, noun="issue", group=group, id=f"{self.view_name}-issues")
+                          empty_text=empty_text, noun="issue", group=group,
+                          filter_placeholder="Quick search: summary contains…  (/ to focus)", id=f"{self.view_name}-issues")
 
     @property
     def table(self) -> IssueTable:
@@ -318,6 +320,14 @@ class IssueListPane(Vertical):
 
         self.app.push_screen(FilterEditorScreen(self.project.key), saved)
 
+    def action_quick_search(self) -> None:
+        self.table.query_one(".filter").focus()
+
+    def fragments(self, quick: str) -> List[str]:
+        """Filter fragments plus the quick search (summary contains every typed word)."""
+        words = quick.split()
+        return [*self.filters.fragments(), *([f"summary ~ {jql.quote_value(' '.join(words) + '*')}"] if words else [])]
+
     def action_clear_filters(self) -> None:
         self.filters.clear()
         self.refresh_issues()
@@ -445,10 +455,10 @@ class SprintsPane(IssueListPane):
     def ready_for_issues(self) -> bool:
         return self.sprint is not None
 
-    def effective_jql(self) -> str:
+    def effective_jql(self, quick: str = "") -> str:
         if self.sprint is None:
             return ""
-        return jql.compose(jql.sprint_clause(self.sprint.id), self.filters.fragments(), self.order_by)
+        return jql.compose(jql.sprint_clause(self.sprint.id), self.fragments(quick), self.order_by)
 
     async def _fetch_issues(self, start: int, limit: int, flt: str) -> Page[Issue]:
         sprint = self.sprint
@@ -456,7 +466,7 @@ class SprintsPane(IssueListPane):
             return Page(values=[])
         if not self.used_agile_fallback:
             try:
-                return await self.client.search(self.effective_jql(), start, limit, fields=self._fields(),
+                return await self.client.search(self.effective_jql(flt), start, limit, fields=self._fields(),
                                                 catalog=self.catalog, story_points_id=self.sp_field)
             except JqlError as exc:
                 if not any("sprint" in m.lower() for m in exc.error_messages) or not self._sprint_clause_failed(exc):
@@ -465,7 +475,7 @@ class SprintsPane(IssueListPane):
                 self.note = ("This instance rejected `sprint = N` in JQL; using /rest/agile/1.0/sprint/{id}/issue "
                              "with the filters as its jql parameter.")
                 self._update_filter_bar()
-        return await self.client.sprint_issues(sprint.id, jql.compose("", self.filters.fragments(), self.order_by),
+        return await self.client.sprint_issues(sprint.id, jql.compose("", self.fragments(flt), self.order_by),
                                                start, limit, fields=self._fields(), catalog=self.catalog,
                                                story_points_id=self.sp_field)
 
@@ -506,13 +516,13 @@ class BacklogPane(IssueListPane):
     def uses_agile(self) -> bool:
         return self.board is not None and self.board.has_sprints
 
-    def effective_jql(self) -> str:
+    def effective_jql(self, quick: str = "") -> str:
         if self.project is None:
             return ""
         if self.uses_agile():
-            frag = self.filters.fragment()
+            frag = jql.and_join(self.fragments(quick))
             return f"[board #{self.board.id} backlog via Agile API] {frag}".strip()
-        return jql.compose(jql.backlog_base(self.project.key), self.filters.fragments(), self.order_by)
+        return jql.compose(jql.backlog_base(self.project.key), self.fragments(quick), self.order_by)
 
     async def extra_people(self) -> List[User]:
         mine = await super().extra_people()
@@ -558,7 +568,7 @@ class BacklogPane(IssueListPane):
         if start == 0:
             items: List[Issue] = []
             while len(items) < 1000:
-                page = await self._fetch_page(len(items), 100)
+                page = await self._fetch_page(len(items), 100, flt)
                 items += page.values
                 if page.next_start is None or not page.values:
                     break
@@ -576,7 +586,7 @@ class BacklogPane(IssueListPane):
         return Page(values=items[start:start + limit], start_at=start, max_results=limit, total=len(items),
                     is_last=start + limit >= len(items))
 
-    async def _fetch_page(self, start: int, limit: int) -> Page[Issue]:
+    async def _fetch_page(self, start: int, limit: int, flt: str) -> Page[Issue]:
         if self.uses_agile():
             # The Agile backlog endpoint omits issues planned in sprints and its jql parameter returns
             # nothing for filtered views on some servers; search the board's saved filter instead.
@@ -585,11 +595,11 @@ class BacklogPane(IssueListPane):
             if fid:
                 base = f"filter = {int(fid)} AND {jql.project_clause(self.project.key)} AND statusCategory != Done"
                 return await self.client.search(
-                    jql.compose(base, self.filters.fragments(), self.order_by), start, limit,
+                    jql.compose(base, self.fragments(flt), self.order_by), start, limit,
                     fields=self._fields(), catalog=self.catalog, story_points_id=self.sp_field)
         if self.uses_agile():
             return await self.client.board_backlog(
-                self.board.id, self.filters.fragment(), start, limit,
+                self.board.id, jql.and_join(self.fragments(flt)), start, limit,
                 fields=[*self._fields(), "sprint"], catalog=self.catalog, story_points_id=self.sp_field)
-        return await self.client.search(self.effective_jql(), start, limit, fields=self._fields(),
+        return await self.client.search(self.effective_jql(flt), start, limit, fields=self._fields(),
                                         catalog=self.catalog, story_points_id=self.sp_field)
