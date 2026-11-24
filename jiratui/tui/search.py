@@ -258,7 +258,8 @@ class IssuesPane(Vertical):
         yield Static("", id="jql-chips")
         yield Static("", id="jql-error")
         yield IssueTable(SEARCH_COLUMNS, self._fetch, search_row, limit=50, autoload=False,
-                         empty_text="No issues match.", noun="issue", id="search-issues")
+                         empty_text="No issues match.", noun="issue", flex=("Summary", "Labels"),
+                         id="search-issues")
 
     @property
     def table(self) -> IssueTable:

@@ -183,7 +183,7 @@ class CreateIssueScreen(BaseScreen):
     CreateIssueScreen #c-top { height: auto; padding: 0 1; }
     CreateIssueScreen #c-top Button { margin-right: 2; }
     CreateIssueScreen #c-form { height: 1fr; padding: 0 1; }
-    CreateIssueScreen .c-label { margin-top: 1; }
+    CreateIssueScreen .c-label { margin-top: 1; width: 100%; }
     CreateIssueScreen .c-text { height: 7; }
     CreateIssueScreen .c-pick { width: 100%; }
     CreateIssueScreen .c-err { color: $error; height: auto; display: none; }

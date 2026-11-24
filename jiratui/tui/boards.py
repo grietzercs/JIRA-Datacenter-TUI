@@ -86,7 +86,7 @@ class IssueListPane(Vertical):
 
     def issue_table(self, empty_text: str, group=None) -> IssueTable:
         return IssueTable(ISSUE_COLUMNS, self._fetch_issues, issue_row, limit=50, autoload=False,
-                          empty_text=empty_text, noun="issue", group=group,
+                          empty_text=empty_text, noun="issue", group=group, flex=("Summary", "Labels"),
                           filter_placeholder="Quick search: summary contains…  (/ to focus)", id=f"{self.view_name}-issues")
 
     @property
@@ -383,7 +383,8 @@ class SprintsPane(IssueListPane):
         yield self.context_bar()
         with Horizontal():
             yield PagedTable(["Sprint", "State", "Dates"], self._fetch_sprints, self._sprint_row, limit=500,
-                             autoload=False, empty_text="No sprints.", noun="sprint", id="sprint-list")
+                             autoload=False, empty_text="No sprints.", noun="sprint", flex=("Sprint",),
+                             id="sprint-list")
             with Vertical(id="sprint-right"):
                 yield FilterBar()
                 yield self.issue_table("No issues in this sprint match the filters.")

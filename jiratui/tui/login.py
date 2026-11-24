@@ -42,7 +42,8 @@ class LoginScreen(BaseScreen):
 
     DEFAULT_CSS = """
     LoginScreen VerticalScroll { padding: 1 2; }
-    LoginScreen Label.field { margin-top: 1; text-style: bold; }
+    LoginScreen Label.field { margin-top: 1; text-style: bold; width: 100%; }
+    LoginScreen Checkbox { width: 100%; }
     LoginScreen #status { margin-top: 1; height: auto; }
     LoginScreen #status.error { color: $error; }
     LoginScreen #status.ok { color: $success; }

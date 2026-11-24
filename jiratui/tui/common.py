@@ -72,6 +72,23 @@ def cell(value: Any, style: str = "") -> Text:
     return Text("" if value is None else str(value), style=style, no_wrap=True, overflow="ellipsis")
 
 
+MIN_FLEX_WIDTH = 12
+MIN_COLUMN_WIDTH = 4
+
+
+def fit_widths(natural: Sequence[int], flex: Sequence[int], available: int) -> Optional[Dict[int, int]]:
+    """Column widths that fit ``available`` cells, or ``None`` when everything fits at natural
+    width. The ``flex`` columns shrink first; when that is not enough every column shrinks."""
+    if not flex or sum(natural) <= available:
+        return None
+    room = available - sum(w for i, w in enumerate(natural) if i not in flex)
+    if room >= MIN_FLEX_WIDTH * len(flex):
+        flex_total = sum(natural[i] for i in flex)
+        return {i: max(MIN_FLEX_WIDTH, min(natural[i], room * natural[i] // flex_total)) for i in flex}
+    total = sum(natural)
+    return {i: max(MIN_COLUMN_WIDTH, min(w, available * w // total)) for i, w in enumerate(natural)}
+
+
 class LazyDataTable(DataTable):
     """DataTable that asks its PagedTable for more rows when scrolled near the end
     (mouse wheel, PgDn, Ctrl+End), not only when the cursor moves."""
@@ -135,6 +152,7 @@ class PagedTable(Vertical):
         empty_text: str = "Nothing here.",
         noun: str = "item",
         group: Optional[Callable[[Any], str]] = None,
+        flex: Sequence[str] = (),
         id: Optional[str] = None,
     ) -> None:
         super().__init__(id=id)
@@ -147,7 +165,11 @@ class PagedTable(Vertical):
         self.empty_text = empty_text
         self.noun = noun
         self.group = group
+        self.flex = [self.columns.index(name) for name in flex]  # columns that wrap to fit the window
+        self._natural = [len(name) for name in self.columns]
+        self._widths: Optional[Dict[int, int]] = None
         self._last_group: Optional[str] = None
+        self._fit_timer: Optional[Timer] = None
         self.filter_text = ""
         self.pager: Pager[Any] = self._new_pager()
         self.is_loading = False
@@ -212,6 +234,7 @@ class PagedTable(Vertical):
         self.pager = self._new_pager()
         self.failed = False
         self._last_group = None
+        self._natural = [len(name) for name in self.columns]
         self.table.clear()
         self.loaded_once = True
         self.load_more()
@@ -252,18 +275,66 @@ class PagedTable(Vertical):
         if gen != self._gen:
             return
         base = len(pager.items) - len(new)
-        table = self.table
-        for i, item in enumerate(new):
-            if self.group is not None and (label := self.group(item)) != self._last_group:
-                self._last_group = label
-                table.add_row(cell(label, "bold reverse"), *[cell("")] * (len(self.columns) - 1),
-                              key=f"group-{base + i}")
-            table.add_row(*[c if isinstance(c, Text) else cell(c) for c in self._row(item)], key=str(base + i))
+        rows = self._rows(new, base)
+        for cells in rows.values():
+            for i, cell_ in enumerate(cells):
+                self._natural[i] = max(self._natural[i], cell_.cell_len)
+        if self._fit() != self._widths:
+            self._rebuild()
+        else:
+            for key, cells in rows.items():
+                self.table.add_row(*cells, key=key, height=None if self._widths else 1)
         self._update_done_status()
         if base == 0 and new:
             if self.group is not None:
-                table.move_cursor(row=1)  # skip the first group header
+                self.table.move_cursor(row=1)  # skip the first group header
             self.post_message(self.Highlighted(self, new[0]))
+
+    def _rows(self, items: Sequence[Any], base: int) -> Dict[str, List[Text]]:
+        """Row cells by row key, with a header row whenever the group changes. Columns narrowed
+        to fit the window get cells that wrap; the rest stay on one line."""
+        out: Dict[str, List[Text]] = {}
+        for i, item in enumerate(items):
+            if self.group is not None and (label := self.group(item)) != self._last_group:
+                self._last_group = label
+                header = [cell("", "reverse") for _ in self.columns]
+                header[(self.flex or [0])[0]] = cell(label, "bold reverse")
+                out[f"group-{base + i}"] = header
+            out[str(base + i)] = [c if isinstance(c, Text) else cell(c) for c in self._row(item)]
+        for cells in out.values():
+            for i in self._widths or ():
+                cells[i].no_wrap, cells[i].overflow = False, "fold"
+        return out
+
+    def _fit(self) -> Optional[Dict[int, int]]:
+        t = self.table
+        if not t.size.width:
+            return None
+        available = t.size.width - t.scrollbar_size_vertical - len(self.columns) * 2 * t.cell_padding
+        return fit_widths(self._natural, self.flex, available)
+
+    def _rebuild(self) -> None:
+        """Re-add columns and rows at the widths that fit the current window."""
+        t = self.table
+        cursor = t.cursor_row
+        self._widths = self._fit()
+        t.clear(columns=True)
+        for i, name in enumerate(self.columns):
+            t.add_column(name, width=(self._widths or {}).get(i))
+        self._last_group = None
+        for key, cells in self._rows(self.pager.items, 0).items():
+            t.add_row(*cells, key=key, height=None if self._widths else 1)
+        if cursor and t.row_count:
+            t.move_cursor(row=min(cursor, t.row_count - 1), animate=False)
+
+    def on_resize(self) -> None:
+        if self._fit_timer:
+            self._fit_timer.stop()
+        self._fit_timer = self.set_timer(0.1, self._refit)
+
+    def _refit(self) -> None:
+        if self._fit() != self._widths:
+            self._rebuild()
 
     def _tick(self) -> None:
         if self.is_loading:
@@ -407,7 +478,7 @@ class BaseScreen(Screen):
 class ConfirmScreen(ModalScreen[bool]):
     DEFAULT_CSS = """
     ConfirmScreen { align: center middle; }
-    ConfirmScreen > Vertical { width: 70; height: auto; border: thick $warning; background: $surface; padding: 1 2; }
+    ConfirmScreen > Vertical { width: 70; max-width: 100%; height: auto; border: thick $warning; background: $surface; padding: 1 2; }
     ConfirmScreen Horizontal { height: auto; margin-top: 1; }
     ConfirmScreen Button { margin-right: 2; }
     """
@@ -440,7 +511,7 @@ class TextPromptScreen(ModalScreen[Optional[str]]):
 
     DEFAULT_CSS = """
     TextPromptScreen { align: center middle; }
-    TextPromptScreen > Vertical { width: 90; height: auto; max-height: 24; border: thick $primary; background: $surface; padding: 1 2; }
+    TextPromptScreen > Vertical { width: 90; max-width: 100%; height: auto; max-height: 24; border: thick $primary; background: $surface; padding: 1 2; }
     TextPromptScreen TextArea { height: 12; }
     TextPromptScreen Horizontal { height: auto; margin-top: 1; }
     TextPromptScreen Button { margin-right: 2; }
@@ -495,7 +566,7 @@ class PickerScreen(ModalScreen[Optional[List[str]]]):
 
     DEFAULT_CSS = """
     PickerScreen { align: center middle; }
-    PickerScreen > Vertical { width: 90; height: 80%; border: thick $primary; background: $surface; padding: 0 1; }
+    PickerScreen > Vertical { width: 90; max-width: 100%; height: 80%; border: thick $primary; background: $surface; padding: 0 1; }
     PickerScreen #pick-title { text-style: bold; padding: 0 1; }
     PickerScreen #pick-list { height: 1fr; }
     PickerScreen #pick-status { height: auto; max-height: 6; color: $text-muted; padding: 0 1; }
@@ -702,7 +773,7 @@ HELP_TEXT = """\
 class HelpScreen(ModalScreen[None]):
     DEFAULT_CSS = """
     HelpScreen { align: center middle; }
-    HelpScreen > Vertical { width: 104; height: auto; max-height: 90%; border: thick $primary; background: $surface; padding: 1 2; }
+    HelpScreen > Vertical { width: 104; max-width: 100%; height: auto; max-height: 90%; border: thick $primary; background: $surface; padding: 1 2; }
     """
     BINDINGS = [Binding("escape,q,f1,question_mark", "close", "Close")]
 

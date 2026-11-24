@@ -71,9 +71,9 @@ class FilterBar(Static):
 class FilterEditorScreen(ModalScreen[Optional[CustomFilter]]):
     DEFAULT_CSS = """
     FilterEditorScreen { align: center middle; }
-    FilterEditorScreen > Vertical { width: 100; height: 90%; border: thick $primary; background: $surface; padding: 0 1; }
+    FilterEditorScreen > Vertical { width: 100; max-width: 100%; height: 90%; border: thick $primary; background: $surface; padding: 0 1; }
     FilterEditorScreen VerticalScroll { height: 1fr; }
-    FilterEditorScreen Label.field { margin-top: 1; text-style: bold; }
+    FilterEditorScreen Label.field { margin-top: 1; text-style: bold; width: 100%; }
     FilterEditorScreen .pick { width: 100%; }
     FilterEditorScreen #fe-preview { height: auto; color: $success; margin-top: 1; }
     FilterEditorScreen #fe-error { height: auto; color: $error; }
@@ -265,7 +265,7 @@ class FilterEditorScreen(ModalScreen[Optional[CustomFilter]]):
 class CustomFiltersScreen(ModalScreen[Optional[FilterResult]]):
     DEFAULT_CSS = """
     CustomFiltersScreen { align: center middle; }
-    CustomFiltersScreen > Vertical { width: 110; height: 85%; border: thick $primary; background: $surface; padding: 0 1; }
+    CustomFiltersScreen > Vertical { width: 110; max-width: 100%; height: 85%; border: thick $primary; background: $surface; padding: 0 1; }
     CustomFiltersScreen #cf-list { height: 1fr; }
     CustomFiltersScreen #cf-status { height: auto; color: $text-muted; }
     CustomFiltersScreen #cf-status.error { color: $error; }
