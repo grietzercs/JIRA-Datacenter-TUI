@@ -37,6 +37,7 @@ if TYPE_CHECKING:  # pragma: no cover
     from .app import JiraApp
 
 NO_BOARD = "__no_board__"
+SPRINT_STATES = ["active", "future", "closed"]
 
 
 class IssueListPane(Vertical):
@@ -384,6 +385,8 @@ class SprintsPane(IssueListPane):
         with Horizontal():
             yield PagedTable(["Sprint", "State", "Dates"], self._fetch_sprints, self._sprint_row, limit=500,
                              autoload=False, empty_text="No sprints.", noun="sprint", flex=("Sprint",),
+                             sort={"State": lambda s: SPRINT_STATES.index(s.state) if s.state in SPRINT_STATES else None,
+                                   "Dates": lambda s: s.start_date or None},
                              id="sprint-list")
             with Vertical(id="sprint-right"):
                 yield FilterBar()

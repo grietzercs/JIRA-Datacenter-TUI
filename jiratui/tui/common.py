@@ -26,7 +26,7 @@ from textual.message import Message
 from textual.screen import ModalScreen, Screen
 from textual.timer import Timer
 from textual.widgets import Button, DataTable, Input, Label, OptionList, SelectionList, Static, TextArea
-from textual.widgets.data_table import CellDoesNotExist
+from textual.widgets.data_table import CellDoesNotExist, RowDoesNotExist
 from textual.widgets.option_list import Option
 from textual.worker import Worker
 
@@ -72,6 +72,7 @@ def cell(value: Any, style: str = "") -> Text:
     return Text("" if value is None else str(value), style=style, no_wrap=True, overflow="ellipsis")
 
 
+SORT_ARROWS = {False: "↑", True: "↓"}
 MIN_FLEX_WIDTH = 12
 MIN_COLUMN_WIDTH = 4
 
@@ -116,6 +117,8 @@ class PagedTable(Vertical):
     BINDINGS = [
         Binding("m", "load_more", "More", show=False),
         Binding("r", "retry", "Reload/Retry"),
+        Binding("right_square_bracket", "sort_next", "Sort", show=False),
+        Binding("left_square_bracket", "sort_prev", "Sort back", show=False),
     ]
 
     class Selected(Message):
@@ -153,6 +156,7 @@ class PagedTable(Vertical):
         noun: str = "item",
         group: Optional[Callable[[Any], str]] = None,
         flex: Sequence[str] = (),
+        sort: Optional[Dict[str, Callable[[Any], Any]]] = None,
         id: Optional[str] = None,
     ) -> None:
         super().__init__(id=id)
@@ -166,7 +170,9 @@ class PagedTable(Vertical):
         self.noun = noun
         self.group = group
         self.flex = [self.columns.index(name) for name in flex]  # columns that wrap to fit the window
-        self._natural = [len(name) for name in self.columns]
+        self._sort_keys = sort or {}  # column name -> key(item); other columns sort by cell text
+        self._sort: Optional[Tuple[int, bool]] = None  # (column index, descending)
+        self._natural = [len(self._label(i)) for i in range(len(self.columns))]
         self._widths: Optional[Dict[int, int]] = None
         self._last_group: Optional[str] = None
         self._fit_timer: Optional[Timer] = None
@@ -180,6 +186,11 @@ class PagedTable(Vertical):
         self._tick_timer: Optional[Timer] = None
         self._filter_timer: Optional[Timer] = None
         self._t0 = 0.0
+
+    def _label(self, i: int) -> str:
+        if self._sort is None or self._sort[0] != i:
+            return self.columns[i]
+        return f"{self.columns[i]} {SORT_ARROWS[self._sort[1]]}"
 
     def _new_pager(self) -> Pager[Any]:
         flt = self.filter_text
@@ -205,7 +216,7 @@ class PagedTable(Vertical):
         return self.pager.items
 
     def on_mount(self) -> None:
-        self.table.add_columns(*self.columns)
+        self.table.add_columns(*(self._label(i) for i in range(len(self.columns))))
         if self.autoload:
             self.reload()
 
@@ -234,7 +245,7 @@ class PagedTable(Vertical):
         self.pager = self._new_pager()
         self.failed = False
         self._last_group = None
-        self._natural = [len(name) for name in self.columns]
+        self._natural = [len(self._label(i)) for i in range(len(self.columns))]
         self.table.clear()
         self.loaded_once = True
         self.load_more()
@@ -275,11 +286,11 @@ class PagedTable(Vertical):
         if gen != self._gen:
             return
         base = len(pager.items) - len(new)
-        rows = self._rows(new, base)
+        rows = self._rows(range(base, len(pager.items)))
         for cells in rows.values():
             for i, cell_ in enumerate(cells):
                 self._natural[i] = max(self._natural[i], cell_.cell_len)
-        if self._fit() != self._widths:
+        if self._sort is not None or self._fit() != self._widths:
             self._rebuild()
         else:
             for key, cells in rows.items():
@@ -290,20 +301,45 @@ class PagedTable(Vertical):
                 self.table.move_cursor(row=1)  # skip the first group header
             self.post_message(self.Highlighted(self, new[0]))
 
-    def _rows(self, items: Sequence[Any], base: int) -> Dict[str, List[Text]]:
-        """Row cells by row key, with a header row whenever the group changes. Columns narrowed
-        to fit the window get cells that wrap; the rest stay on one line."""
+    def _rows(self, order: Iterable[int]) -> Dict[str, List[Text]]:
+        """Row cells by row key (the item index), with a header row whenever the group changes.
+        Columns narrowed to fit the window get cells that wrap; the rest stay on one line."""
         out: Dict[str, List[Text]] = {}
-        for i, item in enumerate(items):
+        for i in order:
+            item = self.pager.items[i]
             if self.group is not None and (label := self.group(item)) != self._last_group:
                 self._last_group = label
                 header = [cell("", "reverse") for _ in self.columns]
                 header[(self.flex or [0])[0]] = cell(label, "bold reverse")
-                out[f"group-{base + i}"] = header
-            out[str(base + i)] = [c if isinstance(c, Text) else cell(c) for c in self._row(item)]
+                out[f"group-{i}"] = header
+            out[str(i)] = [c if isinstance(c, Text) else cell(c) for c in self._row(item)]
         for cells in out.values():
             for i in self._widths or ():
                 cells[i].no_wrap, cells[i].overflow = False, "fold"
+        return out
+
+    def _order(self) -> List[int]:
+        """Item indexes in display order: sorted within each group, empty values last."""
+        if self._sort is None:
+            return list(range(len(self.pager.items)))
+        col, desc = self._sort
+        name = self.columns[col]
+
+        def key(i: int) -> Any:
+            item = self.pager.items[i]
+            if name in self._sort_keys:
+                return self._sort_keys[name](item)
+            c = self._row(item)[col]
+            return (c.plain if isinstance(c, Text) else str(c)).casefold() or None
+
+        groups: Dict[Optional[str], List[int]] = {}
+        for i, item in enumerate(self.pager.items):
+            groups.setdefault(self.group(item) if self.group else None, []).append(i)
+        out: List[int] = []
+        for idx in groups.values():
+            keyed = [(key(i), i) for i in idx]
+            out += [i for k, i in sorted((x for x in keyed if x[0] is not None), key=lambda x: x[0], reverse=desc)]
+            out += [i for k, i in keyed if k is None]
         return out
 
     def _fit(self) -> Optional[Dict[int, int]]:
@@ -317,14 +353,19 @@ class PagedTable(Vertical):
         """Re-add columns and rows at the widths that fit the current window."""
         t = self.table
         cursor = t.cursor_row
+        key = t.coordinate_to_cell_key(t.cursor_coordinate).row_key.value if t.row_count else None
         self._widths = self._fit()
         t.clear(columns=True)
-        for i, name in enumerate(self.columns):
-            t.add_column(name, width=(self._widths or {}).get(i))
+        for i in range(len(self.columns)):
+            t.add_column(self._label(i), width=(self._widths or {}).get(i))
         self._last_group = None
-        for key, cells in self._rows(self.pager.items, 0).items():
-            t.add_row(*cells, key=key, height=None if self._widths else 1)
-        if cursor and t.row_count:
+        for row_key, cells in self._rows(self._order()).items():
+            t.add_row(*cells, key=row_key, height=None if self._widths else 1)
+        if not t.row_count:
+            return
+        try:
+            t.move_cursor(row=t.get_row_index(key) if key else min(cursor, t.row_count - 1), animate=False)
+        except RowDoesNotExist:
             t.move_cursor(row=min(cursor, t.row_count - 1), animate=False)
 
     def on_resize(self) -> None:
@@ -335,6 +376,39 @@ class PagedTable(Vertical):
     def _refit(self) -> None:
         if self._fit() != self._widths:
             self._rebuild()
+
+    def sort_by(self, column: Optional[int], desc: bool = False) -> None:
+        self._sort = None if column is None else (column, desc)
+        if column is not None:
+            self._natural[column] = max(self._natural[column], len(self._label(column)))
+        self._rebuild()
+
+    def action_sort_next(self) -> None:
+        self._step_sort(1)
+
+    def action_sort_prev(self) -> None:
+        self._step_sort(-1)
+
+    def _step_sort(self, step: int) -> None:
+        """Cycle none, then each column ascending and descending."""
+        state = 0 if self._sort is None else 1 + self._sort[0] * 2 + int(self._sort[1])
+        state = (state + step) % (1 + len(self.columns) * 2)
+        if state == 0:
+            self.sort_by(None)
+        else:
+            self.sort_by((state - 1) // 2, bool((state - 1) % 2))
+
+    @on(DataTable.HeaderSelected)
+    def _header_selected(self, ev: DataTable.HeaderSelected) -> None:
+        """Click a header: ascending, again for descending, again to clear."""
+        ev.stop()
+        col = ev.column_index
+        if self._sort is None or self._sort[0] != col:
+            self.sort_by(col)
+        elif not self._sort[1]:
+            self.sort_by(col, True)
+        else:
+            self.sort_by(None)
 
     def _tick(self) -> None:
         if self.is_loading:
@@ -752,6 +826,7 @@ HELP_TEXT = """\
 
 [b]Lists[/b]  ↑/↓ PgUp/PgDn move (more pages load automatically near the end)
          m  load next page     r  reload / retry after an error     Enter  open issue
+         ]  [  sort by next / previous column (asc, desc, off); clicking a header works too
 
 [b]Sprints & Backlog[/b]
   p project   b board   x show/hide closed sprints (Sprints)   s focus sprint list

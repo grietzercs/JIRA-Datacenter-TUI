@@ -104,7 +104,7 @@ deletes that file. Keychain items can be removed in Keychain Access by searching
 | Global | **Ctrl+Q** quit · **F1** / **?** help · **Esc** cancel the running request, else go back (asks before logging out) · Tab/Shift+Tab move focus · Enter open/select |
 | Login | **Ctrl+S** connect · **Ctrl+T** detect auth methods · **Ctrl+E** load from environment · Esc cancel |
 | Main | **F2** Sprints · **F3** Backlog · **F4** Issues/JQL (also 1/2/3 when a table is focused) · **Ctrl+N** create issue · **y** copy the web link of the highlighted issue |
-| Any list | ↑/↓/PgUp/PgDn (the next page loads automatically near the end) · **m** next page · **r** reload/retry · **Enter** open issue |
+| Any list | ↑/↓/PgUp/PgDn (the next page loads automatically near the end) · **m** next page · **r** reload/retry · **Enter** open issue · **]** / **[** sort by the next / previous column (ascending, descending, off) or click a column header; sorts the loaded rows |
 | Sprints & Backlog | **p** project · **b** board · **l** labels · **a** people · **f** custom filters · **F** new custom filter · **X** clear filters |
 | Sprints | **x** show/hide closed sprints · **s** focus the sprint list |
 | Issues (JQL) | **Enter** run · **→** accept completion · **Ctrl+R** history · **Ctrl+O** saved queries · **Ctrl+S** save query · **Ctrl+T** insert helper · **Ctrl+B** order by · **Ctrl+Y** issue types · **Ctrl+L** focus input |
