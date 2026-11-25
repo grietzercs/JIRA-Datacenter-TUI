@@ -648,3 +648,18 @@ async def test_demo_autoconnect_and_logout():
         await wait_for(pilot, lambda: isinstance(app.screen, ConfirmScreen))
         await pilot.press("y")
         await wait_for(pilot, lambda: isinstance(app.screen, LoginScreen) and app.client is None, msg="logged out")
+
+
+async def test_sprint_goal_keybind(fake):
+    from jiratui.tui.boards import SprintGoalScreen
+
+    app = make_app(fake)
+    async with app.run_test(size=SIZE) as pilot:
+        await login(app, pilot)
+        pane = await sprints_ready(app, pilot)
+        pane.sprint_table.focus_table()
+        await pilot.press("g")
+        await wait_for(pilot, lambda: isinstance(app.screen, SprintGoalScreen))
+        assert "Ship the login fix" in text_of(app.screen.query_one(Static))
+        await pilot.press("escape")
+        await wait_for(pilot, lambda: not isinstance(app.screen, SprintGoalScreen))

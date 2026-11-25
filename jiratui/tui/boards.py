@@ -22,6 +22,7 @@ from textual import on
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
+from textual.screen import ModalScreen
 from textual.timer import Timer
 from textual.widgets import Static
 
@@ -359,9 +360,34 @@ class IssueListPane(Vertical):
 
 
 # ------------------------------------------------------------------ sprints
+class SprintGoalScreen(ModalScreen[None]):
+    DEFAULT_CSS = """
+    SprintGoalScreen { align: center middle; }
+    SprintGoalScreen > Vertical { width: 80; max-width: 100%; height: auto; max-height: 90%; border: thick $primary; background: $surface; padding: 1 2; }
+    """
+    BINDINGS = [Binding("escape,q,g,enter", "close", "Close")]
+
+    def __init__(self, sprint: Sprint) -> None:
+        super().__init__()
+        self.sprint = sprint
+
+    def compose(self) -> ComposeResult:
+        s = self.sprint
+        dates = f"{format_date(s.start_date)} to {format_date(s.end_date)}" if s.start_date else "no dates"
+        head = Text()
+        head.append(s.name, style="bold")
+        head.append(f"\n{s.state}, {dates}\n\n", style="dim")
+        with Vertical():
+            yield Static(head + Text(s.goal or "No goal set for this sprint."))
+
+    def action_close(self) -> None:
+        self.dismiss(None)
+
+
 class SprintsPane(IssueListPane):
     BINDINGS = [
         Binding("x", "toggle_closed", "Closed sprints"),
+        Binding("g", "show_goal", "Sprint goal"),
         Binding("s", "focus_sprints", "Sprint list", show=False),
     ]
 
@@ -438,6 +464,13 @@ class SprintsPane(IssueListPane):
         end = format_date(s.end_date)
         dates = f"{format_date(s.start_date)}→{end[5:] if end[:4] == s.start_date[:4] else end}" if s.start_date else ""
         return (cell(s.name, "bold" if s.state == "active" else ""), cell(s.state, style), cell(dates, "dim"))
+
+    def action_show_goal(self) -> None:
+        sprint = self.sprint_table.current_item() or self.sprint
+        if sprint is None:
+            self.notify("Choose a sprint first.", timeout=2)
+            return
+        self.app.push_screen(SprintGoalScreen(sprint))
 
     def action_toggle_closed(self) -> None:
         if self.board is None or not self.board.has_sprints:

@@ -106,7 +106,7 @@ deletes that file. Keychain items can be removed in Keychain Access by searching
 | Main | **F2** Sprints · **F3** Backlog · **F4** Issues/JQL (also 1/2/3 when a table is focused) · **Ctrl+N** create issue · **y** copy the web link of the highlighted issue |
 | Any list | ↑/↓/PgUp/PgDn (the next page loads automatically near the end) · **m** next page · **r** reload/retry · **Enter** open issue · **]** / **[** sort by the next / previous column (ascending, descending, off) or click a column header; sorts the loaded rows |
 | Sprints & Backlog | **p** project · **b** board · **l** labels · **a** people · **f** custom filters · **F** new custom filter · **X** clear filters |
-| Sprints | **x** show/hide closed sprints · **s** focus the sprint list |
+| Sprints | **x** show/hide closed sprints · **s** focus the sprint list · **g** show the highlighted sprint's goal |
 | Issues (JQL) | **Enter** run · **→** accept completion · **Ctrl+R** history · **Ctrl+O** saved queries · **Ctrl+S** save query · **Ctrl+T** insert helper · **Ctrl+B** order by · **Ctrl+Y** issue types · **Ctrl+L** focus input |
 | Issue | **t** transition · **n** comment · **a** assign · **g** go to epic/parent/sub-task/link · **R** refresh |
 | Create | **Ctrl+P** project · **Ctrl+T** issue type · **Ctrl+S** create · **Ctrl+O** open the created issue |

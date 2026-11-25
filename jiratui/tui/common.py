@@ -829,7 +829,7 @@ HELP_TEXT = """\
          ]  [  sort by next / previous column (asc, desc, off); clicking a header works too
 
 [b]Sprints & Backlog[/b]
-  p project   b board   x show/hide closed sprints (Sprints)   s focus sprint list
+  p project   b board   x show/hide closed sprints (Sprints)   s focus sprint list   g sprint goal (Sprints)
   l labels filter   a people filter (incl. Unassigned)
   f custom filters (apply / n new / e edit / d delete; also your Jira favourites)   F new custom filter
   X clear all filters      Filters combine: AND across kinds, OR within labels / people.
